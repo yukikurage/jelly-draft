@@ -1,68 +1,36 @@
 import Component from "component";
-import jelly, {
-  Context,
-  createEffect,
-  createState,
-  Getter,
-  render,
-} from "./jelly";
+import jelly, { Context, createState, Getter, render } from "./jelly";
 
 const [boolState, setBoolState] = createState(true);
 
-const [numState, , modifyNumState] = createState(0);
+const [helloWorld, setHelloWorld] = createState("Hello World");
 
-const increment = () => modifyNumState((prev) => prev + 1);
+const helloWorldLength: Getter<number> = (c) => helloWorld(c).length;
 
-createEffect((c) => {
-  console.log("Effect Called");
-  if (boolState(c)) {
-    console.log(numState(c));
-  }
-});
+const App = () => (
+  <div>
+    <Component />
 
-increment();
-increment();
-increment();
-increment();
-setBoolState(false);
-increment();
-increment();
-increment();
-increment();
-setBoolState(true);
-increment();
-increment();
-increment();
-increment();
+    {(c: Context) =>
+      boolState(c) ? (
+        <p>
+          this is boolean test. Now, true.
+          <div>{helloWorld}</div>
+          <div>{helloWorldLength}</div>
+        </p>
+      ) : (
+        <div>this is boolean test. Now, false.</div>
+      )
+    }
+  </div>
+);
 
-// const [helloWorld, setHelloWorld] = createState("Hello World");
+render(document.body, App());
 
-// const helloWorldLength: Getter<number> = (c) => helloWorld(c).length;
+setTimeout(() => {
+  setHelloWorld("Hello World 2");
+}, 1000);
 
-// const App = () => (
-//   <div>
-//     <Component />
-
-//     {(c: Context) =>
-//       boolState(c) ? (
-//         <p>
-//           this is boolean test. Now, true.
-//           <div>{helloWorld}</div>
-//           <div>{helloWorldLength}</div>
-//         </p>
-//       ) : (
-//         <div>this is boolean test. Now, false.</div>
-//       )
-//     }
-//   </div>
-// );
-
-// render(document.body, App());
-
-// setTimeout(() => {
-//   setHelloWorld("Hello World 2");
-// }, 1000);
-
-// setTimeout(() => {
-//   setBoolState(false);
-// }, 3000);
+setTimeout(() => {
+  setBoolState(false);
+}, 3000);

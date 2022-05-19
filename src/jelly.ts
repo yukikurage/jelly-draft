@@ -1,7 +1,10 @@
-export type Context = () => void;
+export type Context = Set<Set<() => void>>;
 export type Getter<T> = (c: Context) => T;
 export type Setter<T> = (value: T) => void;
 export type Modifier<T> = (modify: (prev: T) => T) => void;
+export type TypeCreateEffect = (
+  effect: (c: Context) => (() => void) | void
+) => void;
 
 const getters = new WeakSet();
 
@@ -12,9 +15,9 @@ export const createState = <T>(
   let dependencies = new Set<() => void>();
   let value = initialValue;
 
-  const getter = (c: () => void) => {
-    // dependencies に追加
-    dependencies.add(c);
+  const getter = (c: Set<Set<() => void>>) => {
+    // dependencies を渡す
+    c.add(dependencies);
     console.log(
       "getter called. dependencies size:",
       dependencies.size,
@@ -27,11 +30,12 @@ export const createState = <T>(
   getters.add(getter);
 
   const setter = (newValue: T) => {
-    const oldDependencies = dependencies;
-    dependencies = new Set();
     if (value === newValue) return;
     value = newValue;
-    oldDependencies.forEach((c) => c());
+
+    const oldDpendencies = new Set(dependencies);
+
+    oldDpendencies.forEach((c) => c());
     console.log(
       "setter called. dependencies size:",
       dependencies.size,
@@ -63,22 +67,32 @@ export const convertFromGetter = <T>(c: Context, value: Getter<T> | T): T => {
 };
 
 export const createEffect = (
-  effect: (c: () => void) => (() => void) | void
-) => {
-  const f = () => {
-    let callback: (() => void) | void;
-    let c = () => {
-      if (callback) callback();
-      f();
-    };
-    callback = effect(c);
+  effect: (c: Context) => (() => void) | void
+): (() => void) => {
+  const context = new Set<Set<() => void>>();
+  const callback = effect(context);
+
+  const clearDependencies = () =>
+    context.forEach((dependencies) => dependencies.delete(dependency));
+
+  const dependency = () => {
+    if (callback) callback();
+    clearDependencies();
+    createEffect(effect);
   };
-  f();
+
+  context.forEach((dependencies) => {
+    dependencies.add(dependency);
+  });
+
+  return clearDependencies;
 };
 
 // h("div", props, children)
 const h = (
-  tagName: keyof HTMLElementTagNameMap | ((/* attributes */) => HTMLElement),
+  tagName:
+    | keyof HTMLElementTagNameMap
+    | ((props: { [key: string]: string }) => HTMLElement),
   attributes: { [key: string]: string },
   ...children: (string | HTMLElement | Getter<string | HTMLElement>)[]
 ): HTMLElement => {
@@ -110,7 +124,7 @@ const h = (
     });
     return realElement;
   } else {
-    return tagName();
+    return tagName(attributes);
   }
 };
 

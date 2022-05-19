@@ -1,11 +1,19 @@
-import jelly, { createState } from "jelly";
+import jelly, { createEffect, createState } from "jelly";
 
-const [state, setState] = createState("This is the initial state, and ...");
+const [state, setState, modifyState] = createState(0);
 
-const Component = () => <div>{state}</div>;
+createEffect((c) => {
+  console.log(state(c));
+});
 
-setTimeout(() => {
-  setState("This is the second state");
-}, 2000);
+const Component = () => {
+  setState(0);
+
+  return <div>{state}</div>;
+};
+
+setInterval(() => {
+  modifyState((x) => x + 1);
+}, 1000);
 
 export default Component;
