@@ -1,4 +1,9 @@
-import jelly, { Context, createEffect, createState } from "jelly";
+import jelly, {
+  Context,
+  createEffect,
+  createState,
+  createUnmountEffect,
+} from "jelly";
 
 const [state, setState, modifyState] = createState(0);
 
@@ -9,11 +14,15 @@ const Component = () => {
     console.log(state(c));
   });
 
+  const id = setInterval(() => {
+    modifyState((x) => x + 1);
+  }, 100);
+
+  createUnmountEffect(() => {
+    clearInterval(id);
+  });
+
   return <div>{(c: Context) => state(c).toString()}</div>;
 };
-
-setInterval(() => {
-  modifyState((x) => x + 1);
-}, 500);
 
 export default Component;

@@ -16,12 +16,6 @@ export const createState = <T>(
   const getter = (c: Set<Set<() => void>>) => {
     // dependencies を渡す
     c.add(dependencies);
-    console.log(
-      "getter called. dependencies size:",
-      dependencies.size,
-      ", value:",
-      value
-    );
     return value;
   };
   const setter = (newValue: T) => {
@@ -31,12 +25,6 @@ export const createState = <T>(
     const dependenciesCopy = new Set(dependencies);
 
     dependenciesCopy.forEach((c) => c());
-    console.log(
-      "setter called. dependencies size:",
-      dependencies.size,
-      ", value:",
-      value
-    );
   };
 
   const modifier = (modify: (prev: T) => T) => {
@@ -50,23 +38,33 @@ export const createState = <T>(
 export const createEffect = (
   effect: (c: Context) => (() => void) | void
 ): (() => void) => {
-  const context = new Set<Set<() => void>>();
-  const callback = effect(context);
+  let clearDependencies: () => void = () => {};
 
-  const clearDependencies = () =>
-    context.forEach((dependencies) => dependencies.delete(dependency));
+  const f = () => {
+    const context = new Set<Set<() => void>>();
+    const callback = effect(context);
 
-  const dependency = () => {
-    if (callback) callback();
-    clearDependencies();
-    createEffect(effect);
+    let dependency: () => void;
+
+    clearDependencies = () => {
+      context.forEach((dependencies) => dependencies.delete(dependency));
+    };
+
+    dependency = () => {
+      if (callback) callback();
+      clearDependencies();
+      f();
+    };
+
+    context.forEach((dependencies) => {
+      dependencies.add(dependency);
+    });
   };
+  f();
 
-  context.forEach((dependencies) => {
-    dependencies.add(dependency);
-  });
-
-  createUnmountEffect(clearDependencies); // component が unmount されたときに　effect　を解除
+  createUnmountEffect(() => {
+    clearDependencies();
+  }); // component が unmount されたときに　effect　を解除
 
   return clearDependencies;
 };
@@ -74,9 +72,7 @@ export const createEffect = (
 let onUnmountEffectTemps = new Set<() => void>();
 
 export const createUnmountEffect = (effect: (c: Context) => void): void => {
-  const context = new Set<Set<() => void>>();
-
-  onUnmountEffectTemps.add(() => effect(context));
+  onUnmountEffectTemps.add(() => effect(new Set()));
 };
 
 const componentSymbol = Symbol("component");
@@ -89,9 +85,9 @@ type Component = {
 const isComponent = (x: any): x is Component => x && x[componentSymbol];
 
 const runComponent = ({ component }: Component): [HTMLElement, () => void] => {
-  const onUnmountEffectTempsSave = new Set(onUnmountEffectTemps);
+  const onUnmountEffectTempsSave = onUnmountEffectTemps;
 
-  onUnmountEffectTemps.clear();
+  onUnmountEffectTemps = new Set();
   const res = component();
 
   const onUnmountEffectTempsCopy = onUnmountEffectTemps;
@@ -111,7 +107,8 @@ const createComponentFromFunctionalComponent = <T>(
   [componentSymbol]: true,
   component: () => {
     const internalComponent = fc(props);
-    return internalComponent.component();
+    const res = internalComponent.component();
+    return res;
   },
 });
 
@@ -140,6 +137,8 @@ const h = (
           }
         });
 
+      const childUnmountEffects = new Set<() => void>();
+
       children.map((child) => {
         if (child instanceof Function) {
           // Via Getter
@@ -148,10 +147,11 @@ const h = (
             if (isComponent(c)) {
               // Getter<Component>
               const [node, onUnmount] = runComponent(c);
-              createUnmountEffect(onUnmount);
+              childUnmountEffects.add(onUnmount);
               realElement.appendChild(node);
               return () => {
                 onUnmount();
+                childUnmountEffects.delete(onUnmount);
                 realElement.removeChild(node);
               };
             } else {
@@ -168,7 +168,7 @@ const h = (
           if (isComponent(child)) {
             // Component
             const [node, onUnmount] = runComponent(child);
-            createUnmountEffect(onUnmount);
+            childUnmountEffects.add(onUnmount);
             realElement.appendChild(node);
           } else {
             // string
@@ -176,6 +176,10 @@ const h = (
             realElement.appendChild(node);
           }
         }
+      });
+
+      createUnmountEffect(() => {
+        childUnmountEffects.forEach((f) => f());
       });
 
       return realElement;
