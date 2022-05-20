@@ -19,7 +19,10 @@ const App = () => {
         boolState(c) ? (
           <p>
             this is boolean test. Now, true.
-            <Component />
+            <Component>
+              <div>コンポーネントに Children を渡す</div>
+              <div>複数個渡せる</div>
+            </Component>
           </p>
         ) : (
           <p>

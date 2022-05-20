@@ -2,7 +2,7 @@ import jelly, { createEffect, createState, createUnmountEffect } from "jelly";
 
 const [state, setState, modifyState] = createState(0);
 
-const Component = () => {
+const Component = ({ children }: { children?: Component[] }) => {
   setState(0);
 
   createEffect((c) => {
@@ -16,7 +16,12 @@ const Component = () => {
   createUnmountEffect(() => {
     clearInterval(id);
   });
-  return <div>{(c: Context) => state(c).toString()}</div>;
+  return (
+    <div>
+      {(c: Context) => state(c).toString()}
+      {children}
+    </div>
+  );
 };
 
 export default Component;

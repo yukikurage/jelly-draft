@@ -100,11 +100,13 @@ const createComponent = (f: () => HTMLElement): Component => ({
   component: f,
 });
 
+type ChildElement = string | Component | Getter<string> | Getter<Component>;
+
 // h("div", props, children)
 const h = <P extends keyof HTMLElementTagNameMap = never>(
   tagName: P | ((/* props */) => Component),
   attributes: Partial<JSX.IntrinsicElements[P]>,
-  ...children: (string | Getter<string> | Component | Getter<Component>)[]
+  ...children: (ChildElement | ChildElement[])[]
 ): Component => {
   if (typeof tagName === "string") {
     // html component
@@ -122,8 +124,7 @@ const h = <P extends keyof HTMLElementTagNameMap = never>(
             if (value instanceof Function) {
               // Value is a Getter
               createEffect((c) => {
-                const v = value(c);
-                realElement.setAttribute(key, value);
+                realElement.setAttribute(key, value(c));
               });
             } else {
               realElement.setAttribute(key, value);
@@ -133,24 +134,40 @@ const h = <P extends keyof HTMLElementTagNameMap = never>(
 
       const childUnmountEffects = new Set<() => void>();
 
-      children.map((child) => {
+      children.flat().map((child) => {
         if (child instanceof Function) {
           // Via Getter
+          let anchorElem: Node | null = null;
+
           createEffect((s) => {
             const c = child(s);
-            if (c instanceof Object) {
+            if (c instanceof Object && c.type === "component") {
               // Getter<Component>
               const [node, onUnmount] = runComponent(c);
               childUnmountEffects.add(onUnmount);
-              realElement.appendChild(node);
+
+              realElement.insertBefore(node, anchorElem);
+              anchorElem && realElement.removeChild(anchorElem);
+              anchorElem = node;
+
               return () => {
                 onUnmount();
                 childUnmountEffects.delete(onUnmount);
-                realElement.removeChild(node);
               };
-            } else {
+            } else if (typeof c === "string") {
               // Getter<string>
               const node = document.createTextNode(c);
+
+              realElement.insertBefore(node, anchorElem);
+              anchorElem && realElement.removeChild(anchorElem);
+              anchorElem = node;
+            } else {
+              console.log(
+                "[WARN] typeof child is expected to be a string, Component or these Array and Getter. Now, typeof child is " +
+                  typeof c
+              );
+              // Getter<string>
+              const node = document.createTextNode(c.toString());
               realElement.appendChild(node);
               return () => {
                 realElement.removeChild(node);
@@ -159,14 +176,21 @@ const h = <P extends keyof HTMLElementTagNameMap = never>(
           });
         } else {
           // string or Component
-          if (child instanceof Object) {
+          if (child instanceof Object && child.type === "component") {
             // Component
             const [node, onUnmount] = runComponent(child);
             childUnmountEffects.add(onUnmount);
             realElement.appendChild(node);
-          } else {
+          } else if (typeof child === "string") {
             // string
             const node = document.createTextNode(child);
+            realElement.appendChild(node);
+          } else {
+            console.log(
+              "[WARN] typeof child is expected to be a string, Component or these Array and Getter. Now, typeof child is " +
+                typeof child
+            );
+            const node = document.createTextNode(child.toString());
             realElement.appendChild(node);
           }
         }
@@ -180,7 +204,10 @@ const h = <P extends keyof HTMLElementTagNameMap = never>(
     });
   } else {
     // functional Component
-    return createComponentFromFunctionalComponent(tagName, attributes);
+    return createComponentFromFunctionalComponent(tagName, {
+      children,
+      ...attributes,
+    });
   }
 };
 
