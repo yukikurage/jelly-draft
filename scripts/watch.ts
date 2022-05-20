@@ -33,7 +33,7 @@ import { execSync } from "child_process";
   await liveServer.start({
     port: 3030,
     host: "localhost",
-    root: "./",
+    root: "./dist",
     open: true,
     logLevel: 2,
   });

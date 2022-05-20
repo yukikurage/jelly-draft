@@ -1,5 +1,5 @@
 declare namespace JSX {
-  type Element = HTMLElement;
+  type Element = Component;
 
   type IntrinsicElements = {
     [P in keyof HTMLElementTagNameMap]: Partial<HTMLElementTagNameMap[P]>;

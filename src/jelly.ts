@@ -6,8 +6,6 @@ export type TypeCreateEffect = (
   effect: (c: Context) => (() => void) | void
 ) => void;
 
-const getters = new WeakSet();
-
 export const createState = <T>(
   initialValue: T
 ): [Getter<T>, Setter<T>, Modifier<T>] => {
@@ -26,16 +24,13 @@ export const createState = <T>(
     );
     return value;
   };
-
-  getters.add(getter);
-
   const setter = (newValue: T) => {
     if (value === newValue) return;
     value = newValue;
 
-    const oldDpendencies = new Set(dependencies);
+    const dependenciesCopy = new Set(dependencies);
 
-    oldDpendencies.forEach((c) => c());
+    dependenciesCopy.forEach((c) => c());
     console.log(
       "setter called. dependencies size:",
       dependencies.size,
@@ -50,20 +45,6 @@ export const createState = <T>(
   };
 
   return [getter, setter, modifier];
-};
-
-export const isGetter = (v: any): v is Getter<any> => getters.has(v);
-
-export const convertToGetter = <T>(value: T | Getter<T>): Getter<T> => {
-  if (isGetter(value)) return value;
-  return () => value;
-};
-
-export const convertFromGetter = <T>(c: Context, value: Getter<T> | T): T => {
-  if (isGetter(value)) {
-    return value(c);
-  }
-  return value;
 };
 
 export const createEffect = (
@@ -85,51 +66,129 @@ export const createEffect = (
     dependencies.add(dependency);
   });
 
+  createUnmountEffect(clearDependencies); // component が unmount されたときに　effect　を解除
+
   return clearDependencies;
 };
 
+let onUnmountEffectTemps = new Set<() => void>();
+
+export const createUnmountEffect = (effect: (c: Context) => void): void => {
+  const context = new Set<Set<() => void>>();
+
+  onUnmountEffectTemps.add(() => effect(context));
+};
+
+const componentSymbol = Symbol("component");
+
+type Component = {
+  [componentSymbol]: true;
+  component: () => HTMLElement;
+};
+
+const isComponent = (x: any): x is Component => x && x[componentSymbol];
+
+const runComponent = ({ component }: Component): [HTMLElement, () => void] => {
+  const onUnmountEffectTempsSave = new Set(onUnmountEffectTemps);
+
+  onUnmountEffectTemps.clear();
+  const res = component();
+
+  const onUnmountEffectTempsCopy = onUnmountEffectTemps;
+  onUnmountEffectTemps = onUnmountEffectTempsSave;
+
+  const onUnmountEffect = () => {
+    onUnmountEffectTempsCopy.forEach((f) => f());
+  };
+
+  return [res, onUnmountEffect];
+};
+
+const createComponentFromFunctionalComponent = <T>(
+  fc: (props: T) => Component,
+  props: T
+): Component => ({
+  [componentSymbol]: true,
+  component: () => {
+    const internalComponent = fc(props);
+    return internalComponent.component();
+  },
+});
+
+const createComponent = (f: () => HTMLElement): Component => ({
+  [componentSymbol]: true,
+  component: f,
+});
+
 // h("div", props, children)
 const h = (
-  tagName:
-    | keyof HTMLElementTagNameMap
-    | ((props: { [key: string]: string }) => HTMLElement),
-  attributes: { [key: string]: string },
-  ...children: (string | HTMLElement | Getter<string | HTMLElement>)[]
-): HTMLElement => {
+  tagName: keyof HTMLElementTagNameMap | ((/* props */) => Component),
+  attributes: { [key: string]: string | (() => void) },
+  ...children: (string | Getter<string> | Component | Getter<Component>)[]
+): Component => {
   if (typeof tagName === "string") {
-    const realElement = document.createElement(tagName);
-    children.map((child) => {
-      if (typeof child === "function") {
-        createEffect((s) => {
-          const c = child(s);
+    // html component
+    return createComponent(() => {
+      const realElement = document.createElement(tagName);
 
-          let node: Node;
-          if (c instanceof HTMLElement) {
-            node = c;
+      attributes &&
+        Object.entries(attributes).forEach(([key, value]) => {
+          if (value instanceof Function) {
+            realElement.addEventListener(key.slice(2), value);
           } else {
-            node = document.createTextNode(c);
+            realElement.setAttribute(key, value);
           }
-          realElement.appendChild(node);
-          return () => {
-            realElement.removeChild(node);
-          };
         });
-      } else {
-        if (child instanceof Node) {
-          realElement.appendChild(child);
+
+      children.map((child) => {
+        if (child instanceof Function) {
+          // Via Getter
+          createEffect((s) => {
+            const c = child(s);
+            if (isComponent(c)) {
+              // Getter<Component>
+              const [node, onUnmount] = runComponent(c);
+              createUnmountEffect(onUnmount);
+              realElement.appendChild(node);
+              return () => {
+                onUnmount();
+                realElement.removeChild(node);
+              };
+            } else {
+              // Getter<string>
+              const node = document.createTextNode(c);
+              realElement.appendChild(node);
+              return () => {
+                realElement.removeChild(node);
+              };
+            }
+          });
         } else {
-          realElement.appendChild(document.createTextNode(child));
+          // string or Component
+          if (isComponent(child)) {
+            // Component
+            const [node, onUnmount] = runComponent(child);
+            createUnmountEffect(onUnmount);
+            realElement.appendChild(node);
+          } else {
+            // string
+            const node = document.createTextNode(child);
+            realElement.appendChild(node);
+          }
         }
-      }
+      });
+
+      return realElement;
     });
-    return realElement;
   } else {
-    return tagName(attributes);
+    // functional Component
+    return createComponentFromFunctionalComponent(tagName, attributes);
   }
 };
 
-export const render = (parent: HTMLElement, component: HTMLElement) => {
-  parent.appendChild(component);
+export const render = (parent: HTMLElement, component: Component) => {
+  const [node] = runComponent(component);
+  parent.appendChild(node);
 };
 
 export default {
