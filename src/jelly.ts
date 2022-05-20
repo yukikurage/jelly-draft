@@ -1,11 +1,3 @@
-export type Context = Set<Set<() => void>>;
-export type Getter<T> = (c: Context) => T;
-export type Setter<T> = (value: T) => void;
-export type Modifier<T> = (modify: (prev: T) => T) => void;
-export type TypeCreateEffect = (
-  effect: (c: Context) => (() => void) | void
-) => void;
-
 export const createState = <T>(
   initialValue: T
 ): [Getter<T>, Setter<T>, Modifier<T>] => {
@@ -13,9 +5,9 @@ export const createState = <T>(
   let dependencies = new Set<() => void>();
   let value = initialValue;
 
-  const getter = (c: Set<Set<() => void>>) => {
+  const getter = (c: Context) => {
     // dependencies を渡す
-    c.add(dependencies);
+    c && c.add(dependencies);
     return value;
   };
   const setter = (newValue: T) => {
@@ -72,17 +64,8 @@ export const createEffect = (
 let onUnmountEffectTemps = new Set<() => void>();
 
 export const createUnmountEffect = (effect: (c: Context) => void): void => {
-  onUnmountEffectTemps.add(() => effect(new Set()));
+  onUnmountEffectTemps.add(() => effect(undefined));
 };
-
-const componentSymbol = Symbol("component");
-
-type Component = {
-  [componentSymbol]: true;
-  component: () => HTMLElement;
-};
-
-const isComponent = (x: any): x is Component => x && x[componentSymbol];
 
 const runComponent = ({ component }: Component): [HTMLElement, () => void] => {
   const onUnmountEffectTempsSave = onUnmountEffectTemps;
@@ -104,7 +87,7 @@ const createComponentFromFunctionalComponent = <T>(
   fc: (props: T) => Component,
   props: T
 ): Component => ({
-  [componentSymbol]: true,
+  type: "component",
   component: () => {
     const internalComponent = fc(props);
     const res = internalComponent.component();
@@ -113,14 +96,14 @@ const createComponentFromFunctionalComponent = <T>(
 });
 
 const createComponent = (f: () => HTMLElement): Component => ({
-  [componentSymbol]: true,
+  type: "component",
   component: f,
 });
 
 // h("div", props, children)
-const h = (
-  tagName: keyof HTMLElementTagNameMap | ((/* props */) => Component),
-  attributes: { [key: string]: string | (() => void) },
+const h = <P extends keyof HTMLElementTagNameMap = never>(
+  tagName: P | ((/* props */) => Component),
+  attributes: Partial<JSX.IntrinsicElements[P]>,
   ...children: (string | Getter<string> | Component | Getter<Component>)[]
 ): Component => {
   if (typeof tagName === "string") {
@@ -130,10 +113,21 @@ const h = (
 
       attributes &&
         Object.entries(attributes).forEach(([key, value]) => {
-          if (value instanceof Function) {
-            realElement.addEventListener(key.slice(2), value);
+          if (key[0] === "o" && key[1] === "n") {
+            // Value is a EventListener
+            realElement.addEventListener(key.slice(2), (e) =>
+              value(e, undefined)
+            );
           } else {
-            realElement.setAttribute(key, value);
+            if (value instanceof Function) {
+              // Value is a Getter
+              createEffect((c) => {
+                const v = value(c);
+                realElement.setAttribute(key, value);
+              });
+            } else {
+              realElement.setAttribute(key, value);
+            }
           }
         });
 
@@ -144,7 +138,7 @@ const h = (
           // Via Getter
           createEffect((s) => {
             const c = child(s);
-            if (isComponent(c)) {
+            if (c instanceof Object) {
               // Getter<Component>
               const [node, onUnmount] = runComponent(c);
               childUnmountEffects.add(onUnmount);
@@ -165,7 +159,7 @@ const h = (
           });
         } else {
           // string or Component
-          if (isComponent(child)) {
+          if (child instanceof Object) {
             // Component
             const [node, onUnmount] = runComponent(child);
             childUnmountEffects.add(onUnmount);

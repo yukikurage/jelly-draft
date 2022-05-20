@@ -1,12 +1,19 @@
 import Component from "component";
-import jelly, { Context, createState, render } from "./jelly";
+import jelly, { createState, render } from "./jelly";
 
 const App = () => {
   const [boolState, , modifyBoolState] = createState(true);
 
   return (
     <div>
-      <button onclick={() => modifyBoolState((s) => !s)}>switch</button>
+      <button
+        onclick={(_, c) => {
+          console.log(boolState(c));
+          modifyBoolState((s) => !s);
+        }}
+      >
+        switch
+      </button>
 
       {(c: Context) =>
         boolState(c) ? (
