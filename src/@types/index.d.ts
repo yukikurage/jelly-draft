@@ -1,14 +1,10 @@
-declare type Context = Set<Set<() => void>> | undefined;
-
-declare type Getter<T> = (c: Context) => T;
+declare type Getter<T> = () => T;
 
 declare type Setter<T> = (value: T) => void;
 
 declare type Modifier<T> = (modify: (prev: T) => T) => void;
 
-declare type TypeCreateEffect = (
-  effect: (c: Context) => (() => void) | void
-) => void;
+declare type TypeCreateEffect = (effect: () => (() => void) | void) => void;
 
 declare type Component = {
   type: "component";
@@ -21,7 +17,7 @@ declare namespace JSX {
     [P in keyof HTMLElementTagNameMap]: Partial<{
       [K in keyof HTMLElementTagNameMap[P]]: K extends `on${infer E}`
         ? E extends keyof HTMLElementEventMap
-          ? (e: HTMLElementEventMap[E], c?: Context) => void
+          ? (e: HTMLElementEventMap[E]) => void
           : never
         : Getter<HTMLElementTagNameMap[P][K]> | HTMLElementTagNameMap[P][K];
     }>;

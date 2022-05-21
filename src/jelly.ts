@@ -1,3 +1,5 @@
+let contextTemps = new Set<Set<() => void>>();
+
 export const createState = <T>(
   initialValue: T
 ): [Getter<T>, Setter<T>, Modifier<T>] => {
@@ -5,9 +7,9 @@ export const createState = <T>(
   let dependencies = new Set<() => void>();
   let value = initialValue;
 
-  const getter = (c: Context) => {
+  const getter = () => {
     // dependencies を渡す
-    c && c.add(dependencies);
+    contextTemps && contextTemps.add(dependencies);
     return value;
   };
   const setter = (newValue: T) => {
@@ -28,13 +30,17 @@ export const createState = <T>(
 };
 
 export const createEffect = (
-  effect: (c: Context) => (() => void) | void
+  effect: () => (() => void) | void
 ): (() => void) => {
   let clearDependencies: () => void = () => {};
 
   const f = () => {
-    const context = new Set<Set<() => void>>();
-    const callback = effect(context);
+    const contextTempsSave = contextTemps;
+    contextTemps = new Set<Set<() => void>>();
+    const callback = effect();
+
+    const context = contextTemps;
+    contextTemps = contextTempsSave;
 
     let dependency: () => void;
 
@@ -63,8 +69,8 @@ export const createEffect = (
 
 let onUnmountEffectTemps = new Set<() => void>();
 
-export const createUnmountEffect = (effect: (c: Context) => void): void => {
-  onUnmountEffectTemps.add(() => effect(undefined));
+export const createUnmountEffect = (effect: () => void): void => {
+  onUnmountEffectTemps.add(() => effect());
 };
 
 const runComponent = ({ component }: Component): [HTMLElement, () => void] => {
@@ -123,8 +129,8 @@ const h = <P extends keyof HTMLElementTagNameMap = never>(
           } else {
             if (value instanceof Function) {
               // Value is a Getter
-              createEffect((c) => {
-                realElement.setAttribute(key, value(c));
+              createEffect(() => {
+                realElement.setAttribute(key, value());
               });
             } else {
               realElement.setAttribute(key, value);
@@ -139,8 +145,8 @@ const h = <P extends keyof HTMLElementTagNameMap = never>(
           // Via Getter
           let anchorElem: Node | null = null;
 
-          createEffect((s) => {
-            const c = child(s);
+          createEffect(() => {
+            const c = child();
             if (c instanceof Object && c.type === "component") {
               // Getter<Component>
               const [node, onUnmount] = runComponent(c);

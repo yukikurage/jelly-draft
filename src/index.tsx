@@ -7,16 +7,16 @@ const App = () => {
   return (
     <div>
       <button
-        onclick={(_, c) => {
-          console.log(boolState(c));
+        onclick={(_) => {
+          console.log(boolState());
           modifyBoolState((s) => !s);
         }}
       >
         switch
       </button>
 
-      {(c: Context) =>
-        boolState(c) ? (
+      {() =>
+        boolState() ? (
           <p>
             this is boolean test. Now, true.
             <Component>
